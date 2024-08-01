@@ -16,6 +16,8 @@ using Microsoft.Extensions.DependencyInjection;
 using FlexLabs.EntityFrameworkCore.Upsert;
 using Microsoft.Data.Sqlite;
 using Microsoft.Data.SqlClient;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
+using System.Runtime.CompilerServices;
 namespace File_hosting
 {
     internal class AuthorizationController : DbContext
@@ -41,15 +43,32 @@ namespace File_hosting
             var connection = new SqliteConnection(linkString);
             optionsBuilder.UseSqlite(connection);
         }
-        public User Authenticate(User user) { return user; }
-        public bool Authorize(User user, int file_id) { return true; }
+        public User Authenticate(User user, string receivingLogin, string receivingParole)
+        {
+            string query = $"update users set permission = '{this.Authorize()}' where email = '{receivingLogin}' and password = '{receivingParole}'";
+            using (SqlConnection connectivity = new(new AuthorizationController().ConnectionString))
+            {
+                SqlCommand command = new(query, connectivity);
+                try
+                {
+                    connectivity.Open();
+                    SqlDataReader reader = command.ExecuteReader();
+                    while (reader.Read()) Console.WriteLine("\t{0}\t{1}\t{2}", reader[0], reader[1],
+                        reader[2]);
+                    connectivity.Close();
+                }
+                catch (Exception ex) { Console.WriteLine(ex.Message); }
+            }
+            return user;
+        }
+        public bool Authorize() { return true; }
     }
     internal class UserController
     {
         public UserController() { }
         public void CreateUser(string email, string password)
         {
-            string queryString = $"insert into users (email, password) values ('{email}', '{password}')";
+            string queryString = $"insert into users(email, password) values('{email}', '{password}')";
             using (SqlConnection connectivity = new(new AuthorizationController().ConnectionString))
             {
                 SqlCommand command = new(queryString, connectivity);
