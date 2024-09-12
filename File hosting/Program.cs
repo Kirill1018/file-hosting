@@ -7,10 +7,16 @@ using System.Reflection.Metadata.Ecma335;
 using Microsoft.EntityFrameworkCore.Sqlite.Infrastructure.Internal;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Data.Sqlite;
+using Microsoft.Identity.Client;
+using Microsoft.Data.SqlClient;
+using System.Net.Mail;
+using System.Runtime.CompilerServices;
 namespace File_hosting
 {
     internal class Program
     {
+        public string Login { get; set; } = "kirillfedorov031@yandex.ru";
+        public string Parole { get; set; } = "Filehosting-031";
         public enum Requests
         {
             USER_CREATE, USER_AUTHORIZE, USER_FORGOTPASS,
@@ -25,7 +31,7 @@ namespace File_hosting
                 tcpListener.Start();
                 string dispatchRequest = Requests.USER_CREATE.ToString();
                 using TcpClient consumer = new TcpClient();
-                await consumer.ConnectAsync("192.168.1.130", 1234);
+                await consumer.ConnectAsync("192.168.1.146", 1234);
                 var streaming = consumer.GetStream();
                 using var writer = new BinaryWriter(streaming);
                 writer.Write(dispatchRequest);
@@ -38,9 +44,8 @@ namespace File_hosting
                     string receivingRequest = reader.ReadString();
                     if (receivingRequest == Requests.USER_CREATE.ToString())
                     {
-                        string login = "kirillfedorov031@yandex.ru", parole = "filehosting031";
-                        writer.Write(login);
-                        writer.Write(parole);
+                        writer.Write(new Program().Login);
+                        writer.Write(new Program().Parole);
                         writer.Flush();
                         Console.WriteLine("сервер запущен. ожидание подключений...");
                         string email = reader.ReadString(), password = reader.ReadString();
@@ -57,7 +62,7 @@ namespace File_hosting
                     }
                     else if (receivingRequest == Requests.USER_AUTHORIZE.ToString())
                     {
-                        string dispatchLogin = "kirillfedorov031@yandex.ru", dispatchParole = "filehosting031";
+                        string dispatchLogin = "kirillfedorov031@yandex.ru", dispatchParole = "Filehosting-031";
                         writer.Write(dispatchLogin);
                         writer.Write(dispatchParole);
                         writer.Flush();
@@ -66,6 +71,47 @@ namespace File_hosting
                         User customers = new User();
                         new AuthorizationController().Authenticate(customers, receivingLogin, receivingParole);
                     }
+                    else if (receivingRequest == Requests.USER_FORGOTPASS.ToString())
+                    {
+                        string queryString = $"select Id from [dbo].[users] where email = '{ new Program().Login }'";
+                        int identificator, message = new Random().Next();
+                        using (SqlConnection connection = new(new AuthorizationController().ConnectionString))
+                        {
+                            SqlCommand command = new(queryString, connection);
+                            try
+                            {
+                                connection.Open();
+                                SqlDataReader dataReader = command.ExecuteReader();
+                                while (dataReader.Read())
+                                {
+                                    identificator = (int)dataReader[0];
+                                    Console.WriteLine(identificator);
+                                    MailAddress from = new MailAddress("kirillfedorov031@gmail.com");
+                                    MailAddress to = new MailAddress("kirill.fiodorov2012@list.ru");
+                                    MailMessage mailMessage = new MailMessage(from, to);
+                                    mailMessage.Subject = "код, который нужно ввести, чтобы обновить пароль";
+                                    mailMessage.Body = message.ToString();
+                                    mailMessage.IsBodyHtml = true;
+                                    using (SmtpClient client = new SmtpClient("smtp.gmail.com", 587))
+                                    {
+                                        client.Credentials = new NetworkCredential("kirillfedorov031@gmail.com", "mdnr etmd cmbq ctcl");
+                                        client.EnableSsl = true;
+                                        await client.SendMailAsync(mailMessage);
+                                        Console.WriteLine("письмо отправлено");
+                                    }
+                                    int code = message;
+                                    if (code == message)
+                                    {
+                                        string passphrase = "Password-031";
+                                        new UserController().UpdateUser(identificator, passphrase);
+                                    }
+                                }
+                                connection.Close();
+                            }
+                            catch (Exception ex) { Console.WriteLine(ex.Message); }
+                        }
+                    }
+                    else if (receivingRequest == Requests.FILE_CREATE.ToString()) new FileAvailability().CreateFile();
                 }
             }
             finally { tcpListener.Stop(); }

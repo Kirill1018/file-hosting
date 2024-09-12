@@ -20,11 +20,11 @@ using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
 using System.Runtime.CompilerServices;
 namespace File_hosting
 {
-    internal class AuthorizationController : DbContext
+    internal class AuthorizationController : FileAvailability
     {
         readonly DbContext? Context;
         public DbSet<User> Users { get; set; }
-        public string ConnectionString { get; set; } = "Data Source=DESKTOP-4JEPINR;Initial Catalog=user and file;Integrated Security=True;Pooling=False;Encrypt=True;Trust Server Certificate=True";
+        public string ConnectionString { get; } = "Data Source=DESKTOP-NEUQAJ1\\SQLEXPRESS;Trust Server Certificate=True";
         public AuthorizationController() { }
         public AuthorizationController(DbContext context)
         {
@@ -38,14 +38,44 @@ namespace File_hosting
         }
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-            var connectionStringBuilder = new SqliteConnectionStringBuilder { DataSource = ConnectionString };
+            var connectionStringBuilder = new SqliteConnectionStringBuilder { DataSource = this.ConnectionString };
             var linkString = connectionStringBuilder.ToString();
             var connection = new SqliteConnection(linkString);
-            optionsBuilder.UseSqlite(connection);
+            var sqlitePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder
+                .ApplicationData), @"DESKTOP-NEUQAJ1\SQLEXPRESS");
+            Directory.CreateDirectory(sqlitePath);
+            optionsBuilder.UseSqlite($"DataSource={sqlitePath}\\user and file.db");
         }
-        public User Authenticate(User user, string receivingLogin, string receivingParole)
+        
+        public bool Authorize(string receivingLogin, string receivingParole)
         {
-            string query = $"update users set permission = '{this.Authorize()}' where email = '{receivingLogin}' and password = '{receivingParole}'";
+            string query = $"select permission from [dbo].[users] where email='{receivingLogin}' and password='{receivingParole}'";
+            SqlConnection connectivity = new(new AuthorizationController().ConnectionString);
+            SqlCommand command = new(query, connectivity);
+            connectivity.Open();
+            SqlDataReader reader = command.ExecuteReader();
+            reader.Read();
+            bool permit = (bool)reader[0];
+            connectivity.Close();
+            if (permit) return permit;
+            else return !permit;
+        }
+    }
+    internal class UserController
+    {
+        public UserController() { }
+        public void CreateUser(string email, string password)
+        {
+            string queryString = $"select email from [dbo].[users]", userId;
+            SqlConnection connection = new(new AuthorizationController().ConnectionString);
+            SqlCommand sqlCommand = new(queryString, connection);
+            connection.Open();
+            SqlDataReader dataReader = sqlCommand.ExecuteReader();
+            dataReader.Read();
+            userId = (string)dataReader[0];
+            connection.Close();
+            Console.WriteLine(userId);
+            string query = $"insert into [dbo].[users](email, password, permission) values('{email}', '{password}', '{false}')";
             using (SqlConnection connectivity = new(new AuthorizationController().ConnectionString))
             {
                 SqlCommand command = new(query, connectivity);
@@ -59,28 +89,56 @@ namespace File_hosting
                 }
                 catch (Exception ex) { Console.WriteLine(ex.Message); }
             }
-            return user;
+            Directory.CreateDirectory(email);
         }
-        public bool Authorize() { return true; }
-    }
-    internal class UserController
-    {
-        public UserController() { }
-        public void CreateUser(string email, string password)
+        public void UpdateUser(int id, string updated_password)
         {
-            string queryString = $"insert into users(email, password) values('{email}', '{password}')";
+            string request = $"update [dbo].[users] set password = '{updated_password}'";
             using (SqlConnection connectivity = new(new AuthorizationController().ConnectionString))
             {
-                SqlCommand command = new(queryString, connectivity);
+                SqlCommand command = new(request, connectivity);
                 try
                 {
                     connectivity.Open();
                     SqlDataReader reader = command.ExecuteReader();
                     while (reader.Read()) Console.WriteLine("\t{0}\t{1}\t{2}", reader[0], reader[1],
                         reader[2]);
+                    connectivity.Close();
                 }
                 catch (Exception ex) { Console.WriteLine(ex.Message); }
             }
         }
+    }
+    internal class FileAvailability : DbContext
+    {
+        public string? UserName;
+        public FileAvailability() { }
+        public User Authenticate(User user, string receivingLogin, string receivingParole)
+        {
+            string query = $"update [dbo].[users] set permission = '{new AuthorizationController().Authorize(receivingLogin, receivingParole)}' where email = '{receivingLogin}' and password = '{receivingParole}'";
+            using (SqlConnection connectivity = new(new AuthorizationController().ConnectionString))
+            {
+                SqlCommand command = new(query, connectivity);
+                try
+                {
+                    connectivity.Open();
+                    SqlDataReader reader = command.ExecuteReader();
+                    while (reader.Read()) Console.WriteLine("\t{0}\t{1}\t{2}", reader[0], reader[1],
+                        reader[2]);
+                    connectivity.Close();
+                }
+                catch (Exception ex) { Console.WriteLine(ex.Message); }
+            }
+            string queryString = $"select email from [dbo].[users] where email = '{receivingLogin}' and password = '{receivingParole}'";
+            SqlConnection connection = new(new AuthorizationController().ConnectionString);
+            SqlCommand sqlCommand = new(queryString, connection);
+            connection.Open();
+            SqlDataReader dataReader = sqlCommand.ExecuteReader();
+            dataReader.Read();
+            this.UserName = (string)dataReader[0];
+            connection.Close();
+            return user;
+        }
+        public void CreateFile() { Console.WriteLine(this.UserName); new FileInfo($"{this.UserName}/file.txt").Create(); }
     }
 }

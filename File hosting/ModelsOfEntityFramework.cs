@@ -34,16 +34,4 @@ namespace File_hosting
             Path = path;
         }
     }
-    internal class Users_Files
-    {
-        public int Id { get; set; }
-        public int User_id { get; set; }
-        public int File_id { get; set; }
-        public Users_Files(int id, int user_id, int file_id)
-        {
-            Id = id;
-            User_id = user_id;
-            File_id = file_id;
-        }
-    }
 }
